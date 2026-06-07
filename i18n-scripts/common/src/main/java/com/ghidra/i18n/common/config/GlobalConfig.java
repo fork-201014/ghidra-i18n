@@ -91,6 +91,7 @@ public class GlobalConfig {
 
     /**
      * Creates a minimal config for testing purposes.
+     * The given ghidraRoot is treated as the repository root (not the ghidra/ submodule).
      */
     public static GlobalConfig forTesting(Path ghidraRoot) {
         return new Builder()
@@ -98,9 +99,9 @@ public class GlobalConfig {
             .ghidraVersion("0.0-TEST")
             .openAiApiKey("test-key-openai")
             .deepSeekApiKey("test-key-deepseek")
-            .outputDir(ghidraRoot.getParent().resolve("i18n-scripts"))
-            .glossaryDir(ghidraRoot.getParent().resolve("glossary").resolve("zh_CN"))
-            .filterConfigDir(ghidraRoot.getParent().resolve("i18n-scripts").resolve("extract").resolve("filters"))
+            .outputDir(ghidraRoot.resolve("i18n-scripts"))
+            .glossaryDir(ghidraRoot.resolve("glossary").resolve("zh_CN"))
+            .filterConfigDir(ghidraRoot.resolve("i18n-scripts").resolve("extract").resolve("filters"))
             .build();
     }
 

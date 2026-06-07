@@ -166,32 +166,85 @@ public class ModuleScanner {
 
     private void computeBundlePaths(Path moduleDir, ModuleInfo m) {
         Path srcDir = moduleDir.resolve("src/main/java");
-        // Walk down to find the first Java package directory
-        try (Stream<Path> stream = Files.walk(srcDir, 3)) {
-            stream
-                .filter(Files::isDirectory)
-                .filter(p -> {
-                    Path rel = srcDir.relativize(p);
-                    return rel.getNameCount() >= 1 && rel.getNameCount() <= 3;
-                })
-                .filter(p -> !p.equals(srcDir))
-                .findFirst()
-                .ifPresent(p -> {
-                    String rel = srcDir.relativize(p).toString();
-                    // Verify this looks like a package path (contains lowercase)
-                    if (rel.matches("^[a-z].*") && !rel.contains("META-INF")) {
-                        m.bundleBasePath = rel;
-                    }
-                });
+        if (!Files.isDirectory(srcDir)) return;
+
+        // Strategy: find the deepest common package prefix by sampling
+        // .java files under src/main/java. Walk at most 4 levels deep.
+        try (Stream<Path> stream = Files.walk(srcDir, 4)) {
+            List<Path> javaFiles = stream
+                .filter(Files::isRegularFile)
+                .filter(p -> p.getFileName().toString().endsWith(".java"))
+                .sorted()
+                .toList();
+
+            if (javaFiles.isEmpty()) return;
+
+            // Compute the longest common parent directory of all .java files
+            Path commonParent = javaFiles.get(0).getParent();
+            for (int i = 1; i < javaFiles.size() && commonParent != null; i++) {
+                commonParent = commonParent(commonParent, javaFiles.get(i).getParent());
+            }
+
+            if (commonParent != null && !commonParent.equals(srcDir)) {
+                String rel = srcDir.relativize(commonParent).toString();
+                if (!rel.isBlank() && !rel.contains("META-INF")) {
+                    m.bundleBasePath = rel;
+                }
+            }
         } catch (IOException ignored) {
             // fall through to defaults
         }
 
+        // Fallback: walk deeper to find a representative package
+        if (m.bundleBasePath == null) {
+            m.bundleBasePath = findFirstPackageDir(moduleDir);
+        }
         if (m.bundleBasePath == null) {
             m.bundleBasePath = m.name.toLowerCase();
         }
         m.bundleClassName = toBundleClassName(m.name);
         m.i18nClassFQN = m.bundleBasePath.replace('/', '.') + ".I18n" + toAlphaNum(m.name);
+    }
+
+    /** Walk deeper into src/main/java to find a directory that looks like a Java package root. */
+    private String findFirstPackageDir(Path moduleDir) {
+        Path srcDir = moduleDir.resolve("src/main/java");
+        try (Stream<Path> stream = Files.walk(srcDir, 6)) {
+            Path candidate = stream
+                .filter(Files::isDirectory)
+                .filter(p -> {
+                    Path rel = srcDir.relativize(p);
+                    return rel.getNameCount() >= 3 && rel.getNameCount() <= 5;
+                })
+                .findFirst()
+                .orElse(null);
+            if (candidate != null) {
+                return srcDir.relativize(candidate).toString();
+            }
+        } catch (IOException ignored) {}
+        return null;
+    }
+
+    /** Return the longest common parent of two Paths, or null. */
+    private static Path commonParent(Path a, Path b) {
+        if (a == null || b == null) return null;
+        Path result = null;
+        int n = Math.min(a.getNameCount(), b.getNameCount());
+        for (int i = 0; i < n; i++) {
+            if (a.getName(i).equals(b.getName(i))) {
+                result = (result == null) ? a.getRoot().resolve(a.getName(0)) : result.resolve(a.getName(i));
+            } else {
+                break;
+            }
+        }
+        // Reconstruct from a's root for correctness
+        if (n == 0) return a.getRoot();
+        Path rebuilt = a.getRoot();
+        for (int i = 0; i < n; i++) {
+            if (!a.getName(i).equals(b.getName(i))) break;
+            rebuilt = rebuilt.resolve(a.getName(i));
+        }
+        return rebuilt.getNameCount() > 0 ? rebuilt : a.getRoot();
     }
 
     private static String toBundleClassName(String moduleName) {

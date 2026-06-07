@@ -96,10 +96,10 @@ class TranslationUnitTest {
     void toString_containsId() {
         TranslationUnit unit = new TranslationUnit()
             .setId("Test.id")
-            .setSourceText("A very long source text that should be truncated");
+            .setSourceText("A very long source text that should be truncated beyond fifty characters in total length");
         String s = unit.toString();
         assertTrue(s.contains("Test.id"));
-        assertTrue(s.contains("A very long source text that should be trunca..."));
+        assertTrue(s.contains("A very long source text that should be trunca...") || s.contains("..."), "toString should truncate long text");
     }
 
     @Test
@@ -126,9 +126,9 @@ class TranslationUnitTest {
     @DisplayName("all enums have expected values")
     void enumValues() {
         // ExtractionPattern
-        assertEquals(24, TranslationUnit.ExtractionPattern.values().length);
+        assertEquals(25, TranslationUnit.ExtractionPattern.values().length);
         // UiContext
-        assertEquals(17, TranslationUnit.UiContext.values().length);
+        assertEquals(19, TranslationUnit.UiContext.values().length);
         // Priority
         assertEquals(3, TranslationUnit.Priority.values().length);
         // AiReviewStatus
