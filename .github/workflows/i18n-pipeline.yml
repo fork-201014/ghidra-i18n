@@ -1,0 +1,347 @@
+name: I18N Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: 'Ghidra release tag'
+        required: false
+        type: string
+      stage_start:
+        description: 'Start from stage'
+        required: false
+        type: choice
+        default: 'extract'
+        options:
+          - extract
+          - translate
+          - transform
+          - validate
+      locale:
+        description: 'Target locale'
+        required: false
+        type: string
+        default: 'zh_CN'
+
+concurrency:
+  group: i18n-pipeline
+  cancel-in-progress: true
+
+jobs:
+  # ========================================================================
+  # SETUP: Version check, submodule update, toolchain setup
+  # ========================================================================
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      ghidra_version: ${{ steps.check_version.outputs.VERSION }}
+      should_run: ${{ steps.check_version.outputs.SHOULD_RUN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Check Ghidra Version
+        id: check_version
+        run: |
+          CACHED=$(cat .ghidra-version 2>/dev/null || echo "none")
+
+          if [ -n "${{ inputs.upstream_tag }}" ]; then
+            UPSTREAM="${{ inputs.upstream_tag }}"
+          else
+            UPSTREAM=$(gh api repos/NationalSecurityAgency/ghidra/releases/latest --jq .tag_name 2>/dev/null || echo "DEV")
+          fi
+
+          echo "Upstream latest: $UPSTREAM, Cached: $CACHED"
+
+          # Always run on manual dispatch; on auto-trigger only if version changed
+          if [ "$UPSTREAM" != "$CACHED" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "SHOULD_RUN=true" >> $GITHUB_OUTPUT
+            echo "VERSION=$UPSTREAM" >> $GITHUB_OUTPUT
+          else
+            echo "SHOULD_RUN=false" >> $GITHUB_OUTPUT
+            echo "VERSION=$CACHED" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Update Submodule
+        if: steps.check_version.outputs.SHOULD_RUN == 'true' && inputs.upstream_tag != ''
+        run: |
+          cd ghidra
+          git fetch --tags origin
+          VERSION="${{ steps.check_version.outputs.VERSION }}"
+          git checkout "$VERSION"
+          echo "Submodule checked out to: $(git describe --tags --always)"
+
+  # ========================================================================
+  # STAGE 1: Extract translatable strings
+  # ========================================================================
+  extract:
+    needs: setup
+    if: |
+      needs.setup.outputs.should_run == 'true' &&
+      inputs.stage_start == 'extract'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v3
+        with:
+          build-root-directory: i18n-scripts
+
+      - name: Run Extraction Pipeline
+        working-directory: i18n-scripts
+        run: ./gradlew :extract:run
+        env:
+          GHIDRA_ROOT: ${{ github.workspace }}/ghidra
+          I18N_STAGE: extract
+          I18N_LOCALE: ${{ inputs.locale }}
+
+      - name: Upload Extraction Manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: extraction-manifest
+          path: i18n-scripts/extract/output/extraction-manifest.json
+          retention-days: 7
+
+      - name: Upload Module Registry
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-registry
+          path: glossary/module-registry.yml
+          retention-days: 7
+
+  # ========================================================================
+  # STAGE 2: AI Translation
+  # ========================================================================
+  translate:
+    needs: [setup, extract]
+    if: |
+      needs.setup.outputs.should_run == 'true' &&
+      (inputs.stage_start == 'extract' || inputs.stage_start == 'translate')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Download Extraction Manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: extraction-manifest
+          path: i18n-scripts/extract/output/
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v3
+        with:
+          build-root-directory: i18n-scripts
+
+      - name: Run Translation Pipeline
+        working-directory: i18n-scripts
+        run: ./gradlew :translate:run
+        env:
+          GHIDRA_ROOT: ${{ github.workspace }}/ghidra
+          I18N_STAGE: translate
+          I18N_LOCALE: ${{ inputs.locale }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+
+      - name: Upload Translated Properties
+        uses: actions/upload-artifact@v4
+        with:
+          name: translated-properties
+          path: i18n-scripts/translate/output/
+          retention-days: 7
+
+  # ========================================================================
+  # STAGE 3: Source code transformation
+  # ========================================================================
+  transform:
+    needs: [setup, translate]
+    if: |
+      needs.setup.outputs.should_run == 'true' &&
+      (inputs.stage_start == 'extract' || inputs.stage_start == 'translate' || inputs.stage_start == 'transform')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Download Extraction Manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: extraction-manifest
+          path: i18n-scripts/extract/output/
+
+      - name: Download Translated Properties
+        uses: actions/download-artifact@v4
+        with:
+          name: translated-properties
+          path: i18n-scripts/translate/output/
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v3
+        with:
+          build-root-directory: i18n-scripts
+
+      - name: Run Transform Pipeline
+        working-directory: i18n-scripts
+        run: ./gradlew :transform:run
+        env:
+          GHIDRA_ROOT: ${{ github.workspace }}/ghidra
+          I18N_STAGE: transform
+          I18N_LOCALE: ${{ inputs.locale }}
+
+      - name: Upload I18N-Patched Source
+        uses: actions/upload-artifact@v4
+        with:
+          name: i18n-patched-source
+          path: |
+            ghidra/**/src/main/resources/**/Messages*.properties
+            ghidra/**/src/main/java/**/I18n*.java
+          retention-days: 7
+
+  # ========================================================================
+  # STAGE 4: Build Ghidra with I18N
+  # ========================================================================
+  build:
+    needs: [setup, transform]
+    if: needs.setup.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Download I18N-Patched Source
+        uses: actions/download-artifact@v4
+        with:
+          name: i18n-patched-source
+
+      - name: Read Ghidra JDK Version
+        run: |
+          JDK=$(awk -F'=' '$1=="application.java.min" {print $2}' ghidra/Ghidra/application.properties)
+          echo "JDK_VER=$JDK" >> $GITHUB_ENV
+          echo "Ghidra requires JDK: $JDK"
+
+      - name: Fetch Ghidra Dependencies
+        working-directory: ghidra
+        run: ./gradlew -I gradle/support/fetchDependencies.gradle -DhideDownloadProgress -DnoEclipse
+
+      - name: Build Ghidra
+        working-directory: ghidra
+        run: ./gradlew buildGhidra --parallel --no-daemon
+
+      - name: Package I18N Distribution
+        run: |
+          mkdir -p dist
+          cd ghidra/build/dist
+          VERSION="${{ needs.setup.outputs.ghidra_version }}"
+          ARCHIVE="../../../dist/ghidra-${VERSION}-i18n-${{ inputs.locale }}.zip"
+          zip -r "$ARCHIVE" .
+          echo "Archive created: $(ls -lh "$ARCHIVE" | awk '{print $5}')"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.setup.outputs.ghidra_version }}-i18n
+          name: Ghidra ${{ needs.setup.outputs.ghidra_version }} I18N (${{ inputs.locale }})
+          draft: true
+          prerelease: ${{ contains(needs.setup.outputs.ghidra_version, 'DEV') }}
+          files: dist/ghidra-*-i18n-*.zip
+          generate_release_notes: true
+          body: |
+            ## Ghidra I18N Release
+
+            - **Ghidra Version**: ${{ needs.setup.outputs.ghidra_version }}
+            - **Language**: ${{ inputs.locale }} (Simplified Chinese)
+            - **Build Date**: ${{ github.event.head_commit.timestamp || 'manual trigger' }}
+
+            ### Usage
+
+            Launch with JVM locale parameters:
+
+            ```bash
+            ./ghidraRun -Duser.language=zh -Duser.country=CN
+            ```
+
+            ### Notes
+
+            This is an automated build from the [ghidra-i18n](https://github.com/${{ github.repository }}) pipeline.
+
+      - name: Commit Translation Memory
+        run: |
+          git config user.name "I18N Bot"
+          git config user.email "i18n-bot@ghidra-i18n"
+          git add glossary/zh_CN/translation-memory.json glossary/module-registry.yml .ghidra-version 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "[auto] sync translation memory & module registry (${{ needs.setup.outputs.ghidra_version }})"
+          git push origin HEAD:main 2>/dev/null || echo "Push skipped (no changes or no permission)"
+
+  # ========================================================================
+  # STAGE 5: Validation report (always runs after build)
+  # ========================================================================
+  validate:
+    needs: [setup, build]
+    if: needs.setup.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Download Extraction Manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: extraction-manifest
+          path: i18n-scripts/extract/output/
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v3
+        with:
+          build-root-directory: i18n-scripts
+
+      - name: Run Validation
+        working-directory: i18n-scripts
+        run: ./gradlew :validate:run
+        env:
+          GHIDRA_ROOT: ${{ github.workspace }}/ghidra
+          I18N_STAGE: validate
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: i18n-scripts/validate/output/coverage-report.json
+          retention-days: 30
