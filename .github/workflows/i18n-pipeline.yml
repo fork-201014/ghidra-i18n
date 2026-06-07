@@ -4,24 +4,24 @@ on:
   workflow_dispatch:
     inputs:
       upstream_tag:
-        description: 'Ghidra release tag'
+        description: "Ghidra release tag"
         required: false
         type: string
       stage_start:
-        description: 'Start from stage'
+        description: "Start from stage"
         required: false
         type: choice
-        default: 'extract'
+        default: "extract"
         options:
           - extract
           - translate
           - transform
           - validate
       locale:
-        description: 'Target locale'
+        description: "Target locale"
         required: false
         type: string
-        default: 'zh_CN'
+        default: "zh_CN"
 
 concurrency:
   group: i18n-pipeline
@@ -90,8 +90,8 @@ jobs:
 
       - uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
-          java-version: '21'
+          distribution: "temurin"
+          java-version: "21"
 
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v3
@@ -136,8 +136,8 @@ jobs:
 
       - uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
-          java-version: '21'
+          distribution: "temurin"
+          java-version: "21"
 
       - name: Download Extraction Manifest
         uses: actions/download-artifact@v4
@@ -157,8 +157,10 @@ jobs:
           GHIDRA_ROOT: ${{ github.workspace }}/ghidra
           I18N_STAGE: translate
           I18N_LOCALE: ${{ inputs.locale }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          # At least one AI provider API key is required.
+          # The translate engine auto-detects which keys are available.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || '' }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY || '' }}
 
       - name: Upload Translated Properties
         uses: actions/upload-artifact@v4
@@ -183,8 +185,8 @@ jobs:
 
       - uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
-          java-version: '21'
+          distribution: "temurin"
+          java-version: "21"
 
       - name: Download Extraction Manifest
         uses: actions/download-artifact@v4
@@ -237,8 +239,8 @@ jobs:
 
       - uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
-          java-version: '21'
+          distribution: "temurin"
+          java-version: "21"
 
       - name: Download I18N-Patched Source
         uses: actions/download-artifact@v4
@@ -318,8 +320,8 @@ jobs:
 
       - uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
-          java-version: '21'
+          distribution: "temurin"
+          java-version: "21"
 
       - name: Download Extraction Manifest
         uses: actions/download-artifact@v4

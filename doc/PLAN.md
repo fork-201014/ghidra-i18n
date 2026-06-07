@@ -1217,7 +1217,10 @@ jobs:
 | `OPENAI_API_KEY` | OpenAI API 翻译调用 | [OpenAI API Keys](https://platform.openai.com/api-keys) |
 | `DEEPSEEK_API_KEY` | DeepSeek API 翻译调用 | [DeepSeek Platform](https://platform.deepseek.com/api_keys) |
 
-> ⚠️ **安全约束**：
+> ⚠️ **至少配置一个即可**：翻译引擎会自动检测哪些 key 可用。
+> 若两个都配置了，优先使用 DeepSeek（成本低），OpenAI 作为备用。
+>
+> **安全约束**：
 > - API key 绝不出现在日志中（GHA 自动屏蔽 `***`）
 > - 仅在 `translate` job 步骤中注入环境变量
 > - 仓库 fork 后需自行配置 Secret
