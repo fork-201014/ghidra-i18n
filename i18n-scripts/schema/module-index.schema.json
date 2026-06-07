@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghidra-i18n/schema/module-index",
+  "title": "ModuleTranslationIndex",
+  "description": "Aggregated translation statistics across all Ghidra submodules.",
+  "type": "object",
+  "required": ["ghidraVersion", "generatedAt", "totalUnits", "translatedUnits", "coveragePercent", "modules"],
+  "properties": {
+    "ghidraVersion": {
+      "type": "string",
+      "description": "Ghidra version (from application.properties)",
+      "examples": ["12.2"]
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when this index was generated"
+    },
+    "totalUnits": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total number of translatable string units"
+    },
+    "translatedUnits": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of units with completed translations"
+    },
+    "coveragePercent": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Translation coverage percentage"
+    },
+    "modules": {
+      "type": "object",
+      "description": "Per-module statistics keyed by module name",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["total", "translated"],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total units in this module"
+          },
+          "translated": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Translated units in this module"
+          },
+          "attributeFiles": {
+            "type": "integer",
+            "default": 0,
+            "description": "Number of i18n .properties files generated for this module"
+          }
+        }
+      }
+    }
+  }
+}

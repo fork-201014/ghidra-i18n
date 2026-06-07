@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghidra-i18n/schema/translation-unit",
+  "title": "TranslationUnit",
+  "description": "A single translatable UI string extracted from Ghidra source code.",
+  "type": "object",
+  "required": [
+    "id",
+    "moduleName",
+    "sourceFilePath",
+    "className",
+    "fullClassName",
+    "pattern",
+    "sourceText",
+    "priority"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Globally unique key, format: {moduleName}.{className}.{field}.{context}",
+      "pattern": "^[a-zA-Z0-9_]+(\\.[a-zA-Z0-9_]+)*$",
+      "examples": ["Docking.LaunchErrorDialog.title"]
+    },
+    "moduleName": {
+      "type": "string",
+      "description": "Gradle submodule name (e.g., Docking, Base, Debugger)"
+    },
+    "sourceFilePath": {
+      "type": "string",
+      "description": "File path relative to submodule root",
+      "examples": ["Ghidra/Framework/Docking/src/main/java/ghidra/util/LaunchErrorDialog.java"]
+    },
+    "className": {
+      "type": "string",
+      "description": "Simple class name"
+    },
+    "fullClassName": {
+      "type": "string",
+      "description": "Fully qualified class name with package"
+    },
+    "pattern": {
+      "type": "string",
+      "description": "Extraction pattern type",
+      "enum": [
+        "setTitle",
+        "setToolTipText",
+        "newJButton",
+        "newJLabel",
+        "newGLabel",
+        "newGHtmlLabel",
+        "newJMenuItem",
+        "newJMenu",
+        "newJCheckBox",
+        "newJRadioButton",
+        "newTitledBorder",
+        "newJFrame",
+        "newJDialog",
+        "pluginshortDescription",
+        "pluginDescription",
+        "showDialog",
+        "showConfirmDialog",
+        "showErrorDialog",
+        "showMessageDialog",
+        "dockingActionName",
+        "dockingActionDescription",
+        "tocText",
+        "htmlText",
+        "pyString",
+        "other"
+      ]
+    },
+    "sourceText": {
+      "type": "string",
+      "description": "Original English text to be translated"
+    },
+    "context": {
+      "type": "string",
+      "description": "Context label for translation disambiguation",
+      "enum": [
+        "dialog.title",
+        "button",
+        "label",
+        "menu.item",
+        "menu.label",
+        "checkbox",
+        "radio",
+        "tooltip",
+        "border.title",
+        "plugin.desc",
+        "plugin.shortDesc",
+        "dialog.message",
+        "action.name",
+        "action.description",
+        "toc.entry",
+        "html.content",
+        "html.heading",
+        "python.string",
+        "other"
+      ]
+    },
+    "priority": {
+      "type": "string",
+      "description": "Translation priority level",
+      "enum": ["P0", "P1", "P2"]
+    },
+    "isHtml": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the string contains HTML tags"
+    },
+    "hasFormatSpecifier": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the string contains %s/%d/{0} format specifiers"
+    },
+    "containsMnemonic": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the string contains & mnemonic markers (e.g., &File)"
+    },
+    "aiReviewStatus": {
+      "type": "string",
+      "enum": ["PENDING", "APPROVED", "REJECTED", "NEEDS_REVIEW"],
+      "default": "PENDING",
+      "description": "AI review status for this string"
+    },
+    "manualApproval": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this string requires manual human approval"
+    },
+    "translation_zh_CN": {
+      "type": "string",
+      "description": "Translated text in Simplified Chinese (empty = untranslated)"
+    },
+    "translationStatus": {
+      "type": "string",
+      "enum": ["UNTRANSLATED", "MACHINE_TRANSLATED", "VERIFIED", "NEEDS_UPDATE"],
+      "default": "UNTRANSLATED",
+      "description": "Current translation status"
+    },
+    "lastModified": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of last modification"
+    }
+  }
+}

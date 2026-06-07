@@ -19,6 +19,50 @@
 *.tar.gz
 *.rar
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+# virtual machine crash logs
 hs_err_pid*
 replay_pid*
+
+# ============================================================
+# Build outputs
+# ============================================================
+build/
+.gradle/
+out/
+target/
+bin/
+
+# ============================================================
+# IDE
+# ============================================================
+.idea/
+*.iml
+*.iws
+*.ipr
+.settings/
+.classpath
+.project
+.vscode/
+*.swp
+*.swo
+*~
+
+# ============================================================
+# OS
+# ============================================================
+.DS_Store
+Thumbs.db
+
+# ============================================================
+# i18n-scripts output
+# ============================================================
+i18n-scripts/extract/output/
+i18n-scripts/translate/output/
+i18n-scripts/validate/output/
+i18n-scripts/transform/output/
+
+# ============================================================
+# Environment
+# ============================================================
+.env
+.env.local

@@ -1,0 +1,12 @@
+# 人工审批标记
+# 标记某些字符串的人工审批决定，格式:
+#   {translationUnitId}: approved|rejected  # 可选注释
+#
+# rejected 的字符串将永久跳过翻译
+# approved 的字符串在下一次上游版本变更时将重新审核
+#
+# 示例:
+#   Docking.LaunchErrorDialog.title: approved
+#   Base.SomePlugin.someButton: rejected  # 这是内部调试按钮
+
+# --- 初始化，暂无审批记录 ---
