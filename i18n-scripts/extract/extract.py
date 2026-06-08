@@ -53,6 +53,28 @@ SKIP_PATTERNS = [
 ]
 
 
+def is_regex_pattern(s: str) -> bool:
+    """Check if a string looks like a regex pattern (not UI text)."""
+    # Common regex constructs
+    regex_indicators = [
+        r'^\^',            # starts with ^
+        r'\$$',             # ends with $
+        r'\\[dDwWsS]',    # \d \D \w \W \s \S
+        r'\[0-9\]',       # character class
+        r'\[a-z\]',        # character class
+        r'\[A-Z\]',        # character class
+        r'\\\.',          # escaped dot
+        r'\.\*',           # .*
+        r'\.\+',           # .+
+        r'\*\?',           # *?
+        r'\+\?',           # +?
+    ]
+    for indicator in regex_indicators:
+        if re.search(indicator, s):
+            return True
+    return False
+
+
 def is_skip_candidate(s: str) -> bool:
     """Check if a string literal is likely NOT a user-visible UI string."""
     for pattern in SKIP_PATTERNS:
@@ -143,6 +165,9 @@ def extract_strings_from_file(filepath: Path, start_id: int = 0) -> tuple[list[d
         if is_escape_fragment(value):
             continue
         if is_skip_candidate(value):
+            continue
+        # Skip regex patterns (not UI text)
+        if is_regex_pattern(value):
             continue
 
         # Determine line number from node position
