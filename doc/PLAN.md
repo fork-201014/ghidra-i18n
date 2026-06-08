@@ -1260,15 +1260,141 @@ jobs:
 | D10 | 配置 Secrets + 本地测试 CI 空跑 |
 | D11 | 编写单元测试骨架 + Phase 1 验收 |
 
-### Phase 2: 提取引擎（3-4 周）
 
-| 任务 | 输出 | 验证方式 |
-|------|------|----------|
-| 2.1 实现 AST 解析器 | JavaParser 集成 | 解析 Base 模块 4146 个文件正确 |
-| 2.2 实现正则扫描器 | 回退模式覆盖 | 覆盖率 >98% |
-| 2.3 实现过滤引擎 | `filter-config.yml` 规则引擎 | 排除率 >60%（非UI字符串被过滤） |
-| 2.4 实现 AI 审核器 | AI 审核 pipeline | 误判率 <5% |
-| 2.5 生成提取报告 | JSON 清单 + 统计 | 人工审核 |
+
+### Phase 2: 提取引擎（详细计划）
+
+> **预估工期**：3-4 周（14 天逐日计划）
+> **目标**：从 Ghidra 约 13,000 个 Java + 181 个 Python + 109 个 HTML + 39 个 TOC XML 文件中
+> 精确提取所有用户可见的 UI 字符串，输出 `extraction-manifest.json`。
+> **关键输出**：~5,000 条 TranslationUnit 清单，经过四层过滤。
+
+#### 2.0 总体架构
+
+```
+FileScanner 遍历 ghidra/ 全部源文件
+  ├── JavaAstScanner      (88 modules, ~13K .java files)
+  │     18 种 API 签名精确匹配，解析失败降级到 RegexScanner
+  ├── RegexScanner        (Python .py, HTML .htm, TOC_Source.xml, AST fallback)
+  └── FilterEngine        (4 层过滤)
+       1. API 排除 (Msg.error, LOG.warn, throw new...)
+       2. 上下文排除 (source line context)
+       3. 正则模式排除 (exclude-patterns.txt)
+       4. AI 语义审核 (DeepSeek/OpenAI)
+```
+
+#### 2.1 AST 扫描器 (JavaAstScanner)
+
+| 模式 | API 签名 | Docking 实测 |
+|------|----------|-------------|
+| setTitle | `*.setTitle(StringLiteralExpr)` | 19 处 |
+| setToolTipText | `*.setToolTipText(StringLiteralExpr)` | 36 处 |
+| newJButton | `new JButton(StringLiteralExpr)` | 19 处 |
+| newJLabel | `new JLabel(StringLiteralExpr)` | 9 处 |
+| GLabel/GHtmlLabel | Ghidra 自研组件 | scanner 匹配 |
+| JMenuItem/JMenu | `new JMenuItem/Menu(...)` | 菜单项 |
+| TitledBorder | `new TitledBorder(StringLiteralExpr)` | 面板边框 |
+| JFrame/JDialog | `new JFrame/Dialog(...)` | 窗口标题 |
+| @PluginInfo | `shortDescription/description = "..."` | 208 处 |
+| DockingAction | `new DockingAction("name", ...)` | 216 处 |
+| showDialog | `show*Dialog(..., "msg", ...)` | 对话框 |
+| setText/setLabel | `*.setText/setLabel(...)` | 动态文本 |
+
+**关键细节**：字符串拼接展开、变量引用降级、链式调用分别提取、三元组去重、按模块批次释放 AST
+
+**验证**：Docking 813 文件 → 87 条；Base 3439 文件 → 2000+ 条
+
+#### 2.2 正则扫描器 (RegexScanner)
+
+| 文件类型 | 数量 | 提取目标 |
+|----------|------|----------|
+| Java AST fallback | ~100 | 18 种模式正则版 |
+| Python .py | 181 | print/UI 字符串 |
+| HTML Help .htm | 109 | h1-h6, title, p, li 文本 |
+| TOC XML | 39 | text="..." 属性 |
+
+#### 2.3 过滤引擎 (FilterEngine)
+
+| Layer | 方法 |
+|-------|------|
+| 1 | StringClassifier.containsLogOrExceptionMethod() |
+| 2 | StringClassifier.containsUiPattern() 反向检查 |
+| 3 | exclude-patterns.txt (21条) + filter-config.yml |
+| 4 | 单字符/纯标点/URL/API Key/debug markers |
+
+**验证**：Docking 817 行含字符串 → 过滤后 <= 90 条
+
+#### 2.4 AI 审核器 (AiReviewer)
+
+- 50条/批次，20s 超时，DeepSeek 优先，OpenAI 回退
+- 目标误判率 < 5%（100 条人工抽样验证）
+
+#### 2.5 主入口 (ExtractionPipeline)
+
+流程：加载配置 → 遍历 88 个模块 → AST 扫描 → 正则回退 → 过滤 → AI 审核 → JSON 输出
+
+**预估产出**（全量）：
+
+| 指标 | 估值 |
+|------|------|
+| 原始候选 | ~8,500 |
+| 过滤后 | ~5,400 |
+| AI 确认 UI | ~4,900 |
+| 最终清单 | ~5,000 |
+
+#### 2.6 Phase 2 新增文件
+
+```
+i18n-scripts/extract/src/main/java/com/ghidra/i18n/extract/
+├── ExtractionPipeline.java       # 主入口
+├── ast/JavaAstScanner.java       # AST 扫描器
+├── regex/RegexScanner.java       # 正则扫描器
+├── regex/HtmlHelpScanner.java    # HTML 扫描
+├── regex/TocXmlScanner.java      # TOC 扫描
+├── filter/FilterEngine.java      # 过滤引擎
+├── filter/FilterConfigLoader.java # 配置加载器
+├── ai/AiReviewer.java            # AI 审核
+├── model/FilterConfig.java       # 配置 POJO
+└── io/ManifestWriter.java        # JSON 输出
+
+i18n-scripts/extract/src/test/java/.../extract/
+├── ast/JavaAstScannerTest.java
+├── regex/RegexScannerTest.java
+├── filter/FilterEngineTest.java
+└── ai/AiReviewerTest.java
+```
+
+#### 2.7 Phase 2 时间分解
+
+| 天 | 任务 |
+|----|------|
+| D1-2 | 实现 JavaAstScanner（18 种 pattern + 去重） |
+| D3 | JavaAstScanner 单元测试（Docking 87 条基准） |
+| D4-5 | 实现 RegexScanner + HtmlHelpScanner + TocXmlScanner |
+| D6 | 实现 FilterEngine + FilterConfigLoader |
+| D7 | FilterEngine 单元测试（排除率验证） |
+| D8-9 | 实现 AiReviewer（DeepSeek API 审核循环） |
+| D10 | AiReviewer 单元测试（Mock API） |
+| D11 | 组装 ExtractionPipeline 主入口 |
+| D12 | ManifestWriter + 统计输出 |
+| D13 | Base 模块（3439 文件）端到端验证 |
+| D14 | 全量扫描 + 覆盖报告 + 人工审核 |
+
+#### 2.8 Phase 2 验收清单
+
+| # | 验收项 | 验证方法 |
+|---|--------|----------|
+| 1 | AST 扫描 Docking (813 文件) | 提取 >= 87 条 |
+| 2 | AST 扫描 Base (3439 文件) | 提取 >= 2000 条 |
+| 3 | 正则回退率 < 5% | AST 覆盖率 > 95% |
+| 4 | HTML Help 109 文件 | manifest 含 HTML_TEXT |
+| 5 | TOC XML 39 文件 | manifest 含 TOC_TEXT |
+| 6 | 过滤排除率 > 60% | candidates/final 比值 |
+| 7 | AI 误判率 < 5% | 100 条人工抽样 |
+| 8 | manifest 有效 JSON | JSON Schema 校验 |
+| 9 | 88 Java 模块全覆盖 | manifest.modules 检查 |
+| 10 | 全量扫描 < 5 分钟 | CI 计时 |
+
 
 ### Phase 3: 翻译引擎（2-3 周）
 
