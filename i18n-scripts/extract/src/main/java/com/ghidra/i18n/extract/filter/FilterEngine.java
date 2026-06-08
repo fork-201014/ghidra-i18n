@@ -73,6 +73,7 @@ public class FilterEngine {
         String text = unit.getSourceText();
         if (text == null) return false;
         String trimmed = text.trim();
+        boolean isManuallyApproved = config.isManualApproved(unit.getId());
 
         // ============================================================
         // Layer 1: API exclusion
@@ -82,7 +83,7 @@ public class FilterEngine {
         // Since TranslationUnit doesn't store source line context directly,
         // we use a heuristic: check StringClassifier.isLogOrError on the text.
         if (classifier.isLogOrError(trimmed)) {
-            if (config.isManualApproved(unit.getId())) {
+            if (isManuallyApproved) {
                 manualOverridden++;
             } else {
                 unit.setAiReviewStatus(TranslationUnit.AiReviewStatus.REJECTED);
@@ -105,7 +106,7 @@ public class FilterEngine {
         // ============================================================
         for (Pattern p : excludePatterns) {
             if (p.matcher(trimmed).matches() || p.matcher(trimmed).find()) {
-                if (config.isManualApproved(unit.getId())) {
+                if (isManuallyApproved) {
                     manualOverridden++;
                     break;
                 } else {
@@ -119,6 +120,9 @@ public class FilterEngine {
         // ============================================================
         // Layer 4: Heuristic exclusion
         // ============================================================
+
+        // If manually approved, skip all heuristic checks
+        if (isManuallyApproved) { passed++; return true; }
 
         // 4a. Blank or single character
         if (trimmed.isEmpty()) { layer4Excluded++; return false; }
@@ -134,8 +138,8 @@ public class FilterEngine {
         // 4b. Punctuation-only
         if (classifier.isPunctuationOnly(trimmed)) { layer4Excluded++; return false; }
 
-        // 4c. Code constants
-        if (classifier.isCodeConstant(trimmed)) { layer4Excluded++; return false; }
+        // 4c. Code constants (except short acronyms like "OK", "ID", "TV")
+        if (classifier.isCodeConstant(trimmed) && trimmed.length() > 3) { layer4Excluded++; return false; }
 
         // 4d. URLs
         if (classifier.isUrl(trimmed)) { layer4Excluded++; return false; }
@@ -159,7 +163,10 @@ public class FilterEngine {
         }
 
         // Passed all filters
-        unit.setAiReviewStatus(TranslationUnit.AiReviewStatus.PENDING);
+        // Don't override NEEDS_REVIEW set by Layer 2
+        if (unit.getAiReviewStatus() != TranslationUnit.AiReviewStatus.NEEDS_REVIEW) {
+            unit.setAiReviewStatus(TranslationUnit.AiReviewStatus.PENDING);
+        }
         passed++;
         return true;
     }
