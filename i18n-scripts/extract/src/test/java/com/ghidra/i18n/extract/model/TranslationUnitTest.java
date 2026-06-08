@@ -126,7 +126,7 @@ class TranslationUnitTest {
     @DisplayName("all enums have expected values")
     void enumValues() {
         // ExtractionPattern
-        assertEquals(25, TranslationUnit.ExtractionPattern.values().length);
+        assertEquals(32, TranslationUnit.ExtractionPattern.values().length);
         // UiContext
         assertEquals(19, TranslationUnit.UiContext.values().length);
         // Priority
