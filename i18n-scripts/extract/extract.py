@@ -111,6 +111,10 @@ _KEY_BINDING_APIS = [
 _KEY_NAMES = {'Enter', 'Escape', 'Space', 'HOME', 'END', 'TAB',
               'DELETE', 'BACK_SPACE', 'INSERT', 'PAGE_UP', 'PAGE_DOWN'}
 
+# Keystroke constants used by KeyStroke.getKeyStroke() — must remain English
+_KEYSTROKE_CONSTANTS = {'pressed', 'typed', 'released', 'none',
+                        'Shift', 'Ctrl', 'Control', 'Alt', 'Meta'}
+
 
 def is_key_binding_context(code_line: str) -> bool:
     """Check if the line is setting up a key binding (keystroke must NOT be translated)."""
@@ -168,6 +172,9 @@ def extract_strings_from_file(filepath: Path, start_id: int = 0) -> tuple[list[d
         if is_escape_fragment(value):
             continue
         if is_skip_candidate(value):
+            continue
+        # Skip keystroke constants used by KeyStroke.getKeyStroke()
+        if value in _KEYSTROKE_CONSTANTS:
             continue
         # Skip regex patterns (not UI text)
         if is_regex_pattern(value):
