@@ -18,8 +18,16 @@ from pathlib import Path
 # Configuration
 # =============================================================================
 
-# Source directory to scan (relative to repo root)
-SOURCE_DIR = Path("ghidra/Ghidra/Framework/Docking/src/main/java/docking/widgets")
+# Source directories to scan (relative to repo root)
+# Each is a sub-path of the Docking module
+DOCKING_BASE = Path("ghidra/Ghidra/Framework/Docking/src/main/java/docking")
+SOURCE_DIRS = [
+    DOCKING_BASE,                    # top-level files (DialogComponentProvider, etc.)
+    DOCKING_BASE / "action",         # DockingAction, MenuData
+    DOCKING_BASE / "menu",           # menu rendering
+    DOCKING_BASE / "options",        # options panels
+    DOCKING_BASE / "widgets",        # already translated, kept for consistency
+]
 
 # Output file
 OUTPUT_DIR = Path("i18n-scripts/extract/output")
@@ -159,27 +167,32 @@ def extract_all(scan_dir: Path) -> list[dict]:
 
 def main():
     repo_root = Path(__file__).resolve().parent.parent.parent
-    scan_path = repo_root / SOURCE_DIR
     output_path = repo_root / OUTPUT_FILE
 
     os.makedirs(output_path.parent, exist_ok=True)
 
     print(f"=== Stage 1: String Extraction ===")
-    print(f"Source: {scan_path}")
     print(f"Output: {output_path}")
 
-    strings = extract_all(scan_path)
+    all_strings = []
+    for src_dir in SOURCE_DIRS:
+        scan_path = repo_root / src_dir
+        if not scan_path.exists():
+            print(f"  [WARN] Directory not found: {scan_path}")
+            continue
+        strings = extract_all(scan_path)
+        all_strings.extend(strings)
 
     # Deduplicate by (original, context.code)
     seen = set()
     unique = []
-    for s in strings:
+    for s in all_strings:
         key = (s["original"], s["context"]["code"])
         if key not in seen:
             seen.add(key)
             unique.append(s)
 
-    print(f"\nTotal extracted: {len(strings)}")
+    print(f"\nTotal extracted: {len(all_strings)}")
     print(f"After dedup:    {len(unique)}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
