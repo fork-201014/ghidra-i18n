@@ -10,6 +10,7 @@ Output: i18n-scripts/extract/output/strings.json
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -63,6 +64,49 @@ def is_skip_candidate(s: str) -> bool:
     return False
 
 
+def is_escape_fragment(s: str) -> bool:
+    """Check if a string looks like it contains escape/formatting fragments."""
+    if '\\n' in s or '\\t' in s or '\\r' in s:
+        return True
+    # Looks like a concatenation fragment
+    if re.match(r'^[\s\n\t\r+]+$', s):
+        return True
+    return False
+
+
+# Key binding API patterns - these contexts indicate a string is a keystroke spec
+_KEY_BINDING_APIS = [
+    'KeyBindingData(',
+    'setKeyBindingData(',
+    '.keyBinding(',
+    'KeyStroke.getKeyStroke(',
+]
+
+# Known key names that appear in key binding contexts
+_KEY_NAMES = {'Enter', 'Escape', 'Space', 'HOME', 'END', 'TAB',
+              'DELETE', 'BACK_SPACE', 'INSERT', 'PAGE_UP', 'PAGE_DOWN'}
+
+
+def is_key_binding_context(code_line: str) -> bool:
+    """Check if the line is setting up a key binding (keystroke must NOT be translated)."""
+    for api in _KEY_BINDING_APIS:
+        if api in code_line:
+            return True
+    return False
+
+
+def is_key_binding_value(code_line: str, value: str) -> bool:
+    """Check if the value looks like a key binding specification."""
+    # Patterns like "Control F", "Alt Up", "Ctrl Shift X"
+    if re.match(r'^(Control|Alt|Shift|Meta|Ctrl)(\s+\w)+$', value):
+        return True
+    # Single key names used in keystroke context
+    if value in _KEY_NAMES and ('KeyStroke' in code_line or 'keyBinding' in code_line
+                                 or 'KeyBinding' in code_line):
+        return True
+    return False
+
+
 def extract_strings_from_file(filepath: Path, start_id: int = 0) -> tuple[list[dict], int]:
     """
     Extract string literals from a Java source file using javalang AST.
@@ -96,7 +140,7 @@ def extract_strings_from_file(filepath: Path, start_id: int = 0) -> tuple[list[d
         if '"' in value:
             continue
         # Skip strings with newline or tab escape sequences (usually code fragments)
-        if '\\n' in value or '\\t' in value:
+        if is_escape_fragment(value):
             continue
         if is_skip_candidate(value):
             continue
@@ -122,6 +166,10 @@ def extract_strings_from_file(filepath: Path, start_id: int = 0) -> tuple[list[d
 
         # The code line itself
         code_line = lines[line_num - 1].strip() if 1 <= line_num <= len(lines) else ""
+
+        # Skip key binding strings (must not be translated)
+        if is_key_binding_context(code_line) or is_key_binding_value(code_line, value):
+            continue
 
         result_id = f"docking_widgets_{next_id:04d}"
         next_id += 1
