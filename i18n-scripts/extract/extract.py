@@ -159,6 +159,20 @@ def is_xml_attribute_context(code_line: str, value: str) -> bool:
     return False
 
 
+def is_concat_fragment(code_line: str, value: str) -> bool:
+    """Check if a string is a short fragment within string concatenation.
+    These are part of a larger message and should be translated as a whole, not piecemeal."""
+    # Only applies to short strings (< 20 chars) in lines with multiple + "..."
+    if len(value) >= 20:
+        return False
+    # Check if the line has string concatenation (multiple quoted strings with +)
+    quote_count = code_line.count('"')
+    if quote_count >= 4 and '+' in code_line:
+        # This is likely a concatenation expression with multiple string fragments
+        return True
+    return False
+
+
 def is_key_binding_value(code_line: str, value: str) -> bool:
     """Check if the value looks like a key binding specification."""
     # Patterns like "Control F", "Alt Up", "Ctrl Shift X"
@@ -208,12 +222,6 @@ def extract_strings_from_file(filepath: Path, start_id: int = 0) -> tuple[list[d
             continue
         if is_skip_candidate(value):
             continue
-        # Skip keystroke constants used by KeyStroke.getKeyStroke()
-        if value in _KEYSTROKE_CONSTANTS:
-            continue
-        # Skip regex patterns (not UI text)
-        if is_regex_pattern(value):
-            continue
 
         # Determine line number from node position
         line_num = node.position.line if node.position else 0
@@ -242,6 +250,15 @@ def extract_strings_from_file(filepath: Path, start_id: int = 0) -> tuple[list[d
             continue
         # Skip XML attribute names (used in serialization, must not be translated)
         if is_xml_attribute_context(code_line, value):
+            continue
+        # Skip string concatenation fragments (short strings in multi-fragment lines)
+        if is_concat_fragment(code_line, value):
+            continue
+        # Skip keystroke constants used by KeyStroke.getKeyStroke()
+        if value in _KEYSTROKE_CONSTANTS:
+            continue
+        # Skip regex patterns (not UI text)
+        if is_regex_pattern(value):
             continue
 
         result_id = f"docking_widgets_{next_id:04d}"
