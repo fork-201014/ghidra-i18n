@@ -151,7 +151,14 @@ def process_translations(
     client: OpenAI,
 ) -> list[dict]:
     """Process all translations: cached + API-translated."""
-    results = list(cached_results)
+    results = []
+
+    # Log cached results
+    for cr in cached_results:
+        short_file = cr["source_file"].split("docking/widgets/")[-1] if "docking/widgets/" in cr["source_file"] else Path(cr["source_file"]).name
+        print(f"    💾 [{cr['id']}] CACHED: {cr['original'][:50]} → {cr['translated'][:50]}")
+        print(f"       📄 {short_file}:{cr['source_line']}")
+    results.extend(cached_results)
 
     total = len(new_strings)
     for i in range(0, total, BATCH_SIZE):
@@ -165,28 +172,37 @@ def process_translations(
             sid = item.get("id", "")
             # Find original string
             original = next((s["original"] for s in batch if s["id"] == sid), "")
+            source_file = next((s["file"] for s in batch if s["id"] == sid), "")
+            source_line = next((s["line"] for s in batch if s["id"] == sid), 0)
+
+            # Truncate for display
+            short_file = source_file.split("docking/widgets/")[-1] if "docking/widgets/" in source_file else Path(source_file).name
 
             if item.get("skip"):
                 # Skip non-UI strings
+                reason = item.get("reason", "")
+                print(f"    ⏭ [{sid}] SKIP ({reason}): {original[:60]}")
                 results.append({
                     "id": sid,
                     "original": original,
                     "translated": None,
                     "type": "skipped",
-                    "reason": item.get("reason", ""),
-                    "source_file": next((s["file"] for s in batch if s["id"] == sid), ""),
-                    "source_line": next((s["line"] for s in batch if s["id"] == sid), 0),
+                    "reason": reason,
+                    "source_file": source_file,
+                    "source_line": source_line,
                 })
             else:
                 translated = item.get("translated", "")
                 item_type = item.get("type", "machine")
+                print(f"    ✅ [{sid}] {original[:50]} → {translated[:50]}")
+                print(f"       📄 {short_file}:{source_line}")
                 results.append({
                     "id": sid,
                     "original": original,
                     "translated": translated,
                     "type": item_type,
-                    "source_file": next((s["file"] for s in batch if s["id"] == sid), ""),
-                    "source_line": next((s["line"] for s in batch if s["id"] == sid), 0),
+                    "source_file": source_file,
+                    "source_line": source_line,
                 })
                 # Update memory
                 if original and translated:
