@@ -135,6 +135,11 @@ def inject_translations(repo_root: Path, translations: list[dict]) -> dict:
                     stats["errors"] += 1
                     continue
                 if new_line != line:
+                    # Safety check: verify quote balance wasn't broken
+                    if new_line.count('"') % 2 != 0:
+                        print(f"  [SKIP] Replacement would break quote balance in {filepath}:{line_num}")
+                        stats["skipped"] += 1
+                        continue
                     lines[idx] = new_line
                     modified = True
                     stats["strings_injected"] += 1
