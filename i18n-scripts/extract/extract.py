@@ -102,6 +102,9 @@ _KEY_BINDING_APIS = [
     'setKeyBindingData(',
     '.keyBinding(',
     'KeyStroke.getKeyStroke(',
+    # Indirect key binding via constructors/placeholders
+    'GfcActionPlaceholder(',
+    'ACTION_NAME_',
 ]
 
 # Known key names that appear in key binding contexts
