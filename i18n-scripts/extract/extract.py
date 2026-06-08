@@ -20,25 +20,30 @@ from pathlib import Path
 # =============================================================================
 
 # Source directories to scan (relative to repo root)
-# Each is a sub-path of the Docking module
-DOCKING_BASE = Path("ghidra/Ghidra/Framework/Docking/src/main/java/docking")
-SOURCE_DIRS = [
-    DOCKING_BASE,                    # top-level files (DialogComponentProvider, etc.)
-    DOCKING_BASE / "action",         # DockingAction, MenuData
-    DOCKING_BASE / "actions",        # action implementations
-    DOCKING_BASE / "dnd",            # drag-and-drop
-    DOCKING_BASE / "event",          # mouse events
-    DOCKING_BASE / "framework",      # splash screen, about dialog
-    DOCKING_BASE / "help",           # help system
-    DOCKING_BASE / "menu",           # menu rendering
-    DOCKING_BASE / "options",        # options panels
-    DOCKING_BASE / "resources",      # icons, resources
-    DOCKING_BASE / "theme",          # theme editor
-    DOCKING_BASE / "tool",           # tool constants
-    DOCKING_BASE / "util",           # docking utilities
-    DOCKING_BASE / "widgets",        # widgets library
-    DOCKING_BASE / "wizard",         # wizard framework
+# Each entry is a module root; subdirectories are auto-discovered
+MODULE_ROOTS = [
+    # Framework/Docking — UI framework (full module)
+    Path("ghidra/Ghidra/Framework/Docking/src/main/java/docking"),
+    # Framework/Project — project window
+    Path("ghidra/Ghidra/Framework/Project/src/main/java/ghidra"),
 ]
+
+
+def discover_dirs(module_root: Path, repo_root: Path) -> list[Path]:
+    """Discover all Java source directories under a module root."""
+    full_path = repo_root / module_root
+    if not full_path.exists():
+        return []
+
+    # Find all directories containing .java files
+    dirs = set()
+    for jf in full_path.rglob("*.java"):
+        if "build/" in str(jf) or "test/" in str(jf) or "Test" in str(jf):
+            continue
+        parent = jf.parent.relative_to(repo_root)
+        dirs.add(parent)
+
+    return sorted(dirs)
 
 # Output file
 OUTPUT_DIR = Path("i18n-scripts/extract/output")
@@ -291,13 +296,15 @@ def main():
     print(f"Output: {output_path}")
 
     all_strings = []
-    for src_dir in SOURCE_DIRS:
-        scan_path = repo_root / src_dir
-        if not scan_path.exists():
-            print(f"  [WARN] Directory not found: {scan_path}")
+    for module_root in MODULE_ROOTS:
+        src_dirs = discover_dirs(module_root, repo_root)
+        if not src_dirs:
+            print(f"  [WARN] No source dirs found for: {module_root}")
             continue
-        strings = extract_all(scan_path)
-        all_strings.extend(strings)
+        print(f"\n--- Module: {module_root} ({len(src_dirs)} source dirs) ---")
+        for src_dir in src_dirs:
+            strings = extract_all(repo_root / src_dir)
+            all_strings.extend(strings)
 
     # Deduplicate by (original, context.code)
     seen = set()

@@ -84,8 +84,8 @@ jobs:
         run: cd ghidra && ./gradlew -I gradle/support/fetchDependencies.gradle
         timeout-minutes: 15
 
-      - name: Stage 4b — Build Docking module
-        run: cd ghidra && ./gradlew :Docking:jar
+      - name: Stage 4b — Build Docking + Project
+        run: cd ghidra && ./gradlew :Docking:jar :Project:jar
         timeout-minutes: 30
 
       # -----------------------------------------------
