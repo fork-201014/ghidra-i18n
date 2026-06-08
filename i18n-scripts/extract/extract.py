@@ -107,6 +107,16 @@ _KEY_BINDING_APIS = [
     'ACTION_NAME_',
 ]
 
+# XML DOM API patterns — attribute names used in serialization must not be translated
+_XML_ATTR_APIS = [
+    'getAttributeValue(',
+    'setAttribute(',
+    'getAttribute(',
+    'getTagName(',
+    'createElement(',
+    'getElementsByTagName(',
+]
+
 # Known key names that appear in key binding contexts
 _KEY_NAMES = {'Enter', 'Escape', 'Space', 'HOME', 'END', 'TAB',
               'DELETE', 'BACK_SPACE', 'INSERT', 'PAGE_UP', 'PAGE_DOWN'}
@@ -121,6 +131,16 @@ def is_key_binding_context(code_line: str) -> bool:
     for api in _KEY_BINDING_APIS:
         if api in code_line:
             return True
+    return False
+
+
+def is_xml_attribute_context(code_line: str, value: str) -> bool:
+    """Check if the string is likely an XML attribute name or DOM API parameter."""
+    for api in _XML_ATTR_APIS:
+        if api in code_line:
+            # Heuristic: all-caps or PascalCase short strings in XML context
+            if value.isupper() or (value[0].isupper() if value else False):
+                return True
     return False
 
 
@@ -204,6 +224,9 @@ def extract_strings_from_file(filepath: Path, start_id: int = 0) -> tuple[list[d
 
         # Skip key binding strings (must not be translated)
         if is_key_binding_context(code_line) or is_key_binding_value(code_line, value):
+            continue
+        # Skip XML attribute names (used in serialization, must not be translated)
+        if is_xml_attribute_context(code_line, value):
             continue
 
         result_id = f"docking_widgets_{next_id:04d}"
