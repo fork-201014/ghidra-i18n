@@ -128,6 +128,7 @@ def translate_batch(client: OpenAI, batch: list[dict]) -> list[dict]:
             ],
             temperature=0.1,
             max_tokens=4096,
+            extra_body={"thinking": {"type": "disabled"}},
         )
 
         content = response.choices[0].message.content.strip()
