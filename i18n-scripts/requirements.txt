@@ -1,0 +1,15 @@
+# Python dependencies for Ghidra i18n pipeline
+# Install: pip install -r requirements.txt
+
+# Java AST parsing
+javalang>=0.13.0
+
+# DeepSeek API (OpenAI-compatible SDK)
+openai>=1.30.0
+
+# JSON (stdlib, no install needed)
+# json
+
+# Optional: faster AST parsing (uncomment if switching from javalang)
+# tree-sitter>=0.23.0
+# tree-sitter-java>=0.23.0

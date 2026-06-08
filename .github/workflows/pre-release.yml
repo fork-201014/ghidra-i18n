@@ -1,0 +1,116 @@
+name: Pre-Release Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  i18n-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # -----------------------------------------------
+      # Setup
+      # -----------------------------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: i18n-scripts/requirements.txt
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ghidra/.gradle
+          key: gradle-${{ runner.os }}-${{ hashFiles('ghidra/**/build.gradle', 'ghidra/gradle.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Install Python dependencies
+        run: pip install -r i18n-scripts/requirements.txt
+
+      # -----------------------------------------------
+      # Stage 1: Extract strings
+      # -----------------------------------------------
+      - name: Stage 1 — Extract strings (AST)
+        run: python i18n-scripts/extract/extract.py
+
+      - name: Upload extraction artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: strings-json
+          path: i18n-scripts/extract/output/strings.json
+
+      # -----------------------------------------------
+      # Stage 2: AI Translate
+      # -----------------------------------------------
+      - name: Stage 2 — AI Translate (DeepSeek)
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: python i18n-scripts/translate/translate.py
+
+      - name: Upload translation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: translated-json
+          path: i18n-scripts/translate/output/translated.json
+
+      # -----------------------------------------------
+      # Stage 3: Inject translations into source
+      # -----------------------------------------------
+      - name: Stage 3 — Inject translations
+        run: python i18n-scripts/inject/inject.py
+
+      # -----------------------------------------------
+      # Stage 4: Build Docking module
+      # -----------------------------------------------
+      - name: Stage 4 — Build Docking module
+        run: cd ghidra && ./gradlew :Docking:jar
+        timeout-minutes: 30
+
+      # -----------------------------------------------
+      # Publish
+      # -----------------------------------------------
+      - name: Upload Docking JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docking-jar
+          path: ghidra/Ghidra/Framework/Docking/build/libs/*.jar
+
+      - name: Create Pre-Release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          tag_name: pre-${{ github.run_number }}
+          name: "Pre-Release #${{ github.run_number }}"
+          body: |
+            ## Ghidra i18n Pre-Release (Docking widgets)
+
+            **Ghidra version:** `${{ hashFiles('.ghidra-version') }}`
+            **Build:** #${{ github.run_number }}
+            **Commit:** ${{ github.sha }}
+
+            ### Contents
+            - `docking.jar` — 翻译后的 Docking 模块（中文 UI 字符串）
+            - `translated.json` — 翻译映射表
+          files: |
+            ghidra/Ghidra/Framework/Docking/build/libs/*.jar
+            i18n-scripts/translate/output/translated.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,150 @@
+name: Stable Release Check
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # 每天 UTC 2:00（北京时间 10:00）
+  workflow_dispatch:
+
+jobs:
+  # -----------------------------------------------
+  # Job 1: Check for upstream Ghidra release
+  # -----------------------------------------------
+  check-upstream:
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.check.outputs.new_version }}
+      current_version: ${{ steps.check.outputs.current_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check upstream Ghidra tag
+        id: check
+        run: |
+          # Fetch all tags from upstream Ghidra
+          LATEST=$(gh api repos/NationalSecurityAgency/ghidra/git/refs/tags \
+            --jq '.[].ref' \
+            | grep 'Ghidra_[0-9]' \
+            | sed 's|refs/tags/||' \
+            | sort -V \
+            | tail -1)
+
+          CURRENT=$(cat .ghidra-version 2>/dev/null || echo "unknown")
+
+          echo "Latest upstream release: $LATEST"
+          echo "Current tracked version: $CURRENT"
+          echo "current_version=$CURRENT" >> $GITHUB_OUTPUT
+
+          if [ "$LATEST" != "$CURRENT" ] && [ -n "$LATEST" ]; then
+            echo "new_version=$LATEST" >> $GITHUB_OUTPUT
+            echo "✅ New version detected!"
+          else
+            echo "No new version. Skipping build."
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # -----------------------------------------------
+  # Job 2: Full i18n build for new upstream version
+  # -----------------------------------------------
+  stable-build:
+    needs: check-upstream
+    if: needs.check-upstream.outputs.new_version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # -----------------------------------------------
+      # Update submodule to new upstream version
+      # -----------------------------------------------
+      - name: Update submodule to ${{ needs.check-upstream.outputs.new_version }}
+        run: |
+          cd ghidra
+          git fetch origin tag ${{ needs.check-upstream.outputs.new_version }}
+          git checkout ${{ needs.check-upstream.outputs.new_version }}
+          echo "Switched to ${{ needs.check-upstream.outputs.new_version }}"
+
+      - name: Record new version
+        run: |
+          echo "${{ needs.check-upstream.outputs.new_version }}" > .ghidra-version
+          echo "Updated .ghidra-version"
+
+      # -----------------------------------------------
+      # Setup
+      # -----------------------------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: i18n-scripts/requirements.txt
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ghidra/.gradle
+          key: gradle-${{ runner.os }}-${{ hashFiles('ghidra/**/build.gradle', 'ghidra/gradle.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Install Python dependencies
+        run: pip install -r i18n-scripts/requirements.txt
+
+      # -----------------------------------------------
+      # Stage 1-3: Extract → Translate → Inject
+      # -----------------------------------------------
+      - name: Stage 1 — Extract strings (AST)
+        run: python i18n-scripts/extract/extract.py
+
+      - name: Stage 2 — AI Translate (DeepSeek)
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: python i18n-scripts/translate/translate.py
+
+      - name: Stage 3 — Inject translations
+        run: python i18n-scripts/inject/inject.py
+
+      # -----------------------------------------------
+      # Stage 4: Build Docking module
+      # -----------------------------------------------
+      - name: Stage 4 — Build Docking module
+        run: cd ghidra && ./gradlew :Docking:jar
+        timeout-minutes: 30
+
+      # -----------------------------------------------
+      # Publish Stable Release
+      # -----------------------------------------------
+      - name: Create Stable Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.check-upstream.outputs.new_version }}-zh_CN
+          name: "Ghidra ${{ needs.check-upstream.outputs.new_version }} 中文版 (Docking)"
+          body: |
+            ## Ghidra ${{ needs.check-upstream.outputs.new_version }} 中文版
+
+            基于上游 [`${{ needs.check-upstream.outputs.new_version }}`](https://github.com/NationalSecurityAgency/ghidra/releases/tag/${{ needs.check-upstream.outputs.new_version }}) 构建。
+
+            ### 已翻译模块
+            - **Framework/Docking** — 通用 UI 组件库（对话框、按钮、标签等）
+
+            ### Contents
+            - `docking.jar` — 翻译后的 Docking 模块
+            - `translated.json` — 翻译映射表
+          files: |
+            ghidra/Ghidra/Framework/Docking/build/libs/*.jar
+            i18n-scripts/translate/output/translated.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

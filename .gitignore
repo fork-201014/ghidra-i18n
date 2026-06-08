@@ -66,3 +66,4 @@ i18n-scripts/transform/output/
 # ============================================================
 .env
 .env.local
+.venv/
