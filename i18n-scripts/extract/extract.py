@@ -25,9 +25,19 @@ DOCKING_BASE = Path("ghidra/Ghidra/Framework/Docking/src/main/java/docking")
 SOURCE_DIRS = [
     DOCKING_BASE,                    # top-level files (DialogComponentProvider, etc.)
     DOCKING_BASE / "action",         # DockingAction, MenuData
+    DOCKING_BASE / "actions",        # action implementations
+    DOCKING_BASE / "dnd",            # drag-and-drop
+    DOCKING_BASE / "event",          # mouse events
+    DOCKING_BASE / "framework",      # splash screen, about dialog
+    DOCKING_BASE / "help",           # help system
     DOCKING_BASE / "menu",           # menu rendering
     DOCKING_BASE / "options",        # options panels
-    DOCKING_BASE / "widgets",        # already translated, kept for consistency
+    DOCKING_BASE / "resources",      # icons, resources
+    DOCKING_BASE / "theme",          # theme editor
+    DOCKING_BASE / "tool",           # tool constants
+    DOCKING_BASE / "util",           # docking utilities
+    DOCKING_BASE / "widgets",        # widgets library
+    DOCKING_BASE / "wizard",         # wizard framework
 ]
 
 # Output file
