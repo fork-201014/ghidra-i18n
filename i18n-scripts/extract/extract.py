@@ -84,6 +84,12 @@ def extract_strings_from_file(filepath: Path, start_id: int = 0) -> tuple[list[d
             continue
         # Strip surrounding quotes
         value = value[1:-1]
+        # Skip strings with embedded quotes (usually string templates, not pure UI)
+        if '"' in value:
+            continue
+        # Skip strings with newline or tab escape sequences (usually code fragments)
+        if '\\n' in value or '\\t' in value:
+            continue
         if is_skip_candidate(value):
             continue
 

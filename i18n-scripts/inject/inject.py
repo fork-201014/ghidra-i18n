@@ -101,21 +101,39 @@ def inject_translations(repo_root: Path, translations: list[dict]) -> dict:
                         stats["errors"] += 1
                         continue
 
-                # Safe replacement: replace as complete string literal with quotes
-                # This avoids corrupting concatenation fragments like "\n", " + ", etc.
-                quoted_original = '"' + original + '"'
-                quoted_translated = '"' + translated + '"'
+                # Safe replacement: replace as complete string literal with quotes.
+                # Handle both escaped and unescaped versions of the original string
+                # (AST parsing unescapes \" to ", so we need to check both forms).
+                replaced = False
 
-                if quoted_original not in line:
-                    # Fall back to raw replacement for edge cases (e.g. string fragments)
-                    # but only if the line doesn't contain concatenation operators nearby
-                    if ' + ' in line and len(original) < 5:
-                        print(f"  [SKIP] '{original}' looks like concatenation fragment in {filepath}:{line_num}")
-                        stats["skipped"] += 1
-                        continue
-                    new_line = line.replace(original, translated, 1)
-                else:
+                # Try exact quote-delimited match first: "original"
+                quoted_original = '"' + original + '"'
+                quoted_translated = '"' + translated.replace('"', '\\"') + '"'
+
+                if quoted_original in line:
                     new_line = line.replace(quoted_original, quoted_translated, 1)
+                    replaced = True
+                else:
+                    # Try with common Java escaping: backslash-escape quotes in original
+                    escaped_original = original.replace('"', '\\"')
+                    quoted_escaped_orig = '"' + escaped_original + '"'
+                    if quoted_escaped_orig in line:
+                        new_line = line.replace(quoted_escaped_orig, quoted_translated, 1)
+                        replaced = True
+                    # Also try un-escaped match (the translated text has no embedded quotes typically)
+                    elif translated.find('"') == -1 and original in line:
+                        # Original appears unquoted (concatenation fragment), skip if suspicious
+                        if ' + ' in line and len(original) < 5:
+                            print(f"  [SKIP] '{original}' looks like concatenation fragment in {filepath}:{line_num}")
+                            stats["skipped"] += 1
+                            continue
+                        new_line = line.replace(original, translated, 1)
+                        replaced = True
+
+                if not replaced:
+                    print(f"  [WARN] Could not find safe replacement for '{original}' in {filepath}:{line_num}")
+                    stats["errors"] += 1
+                    continue
                 if new_line != line:
                     lines[idx] = new_line
                     modified = True
