@@ -101,9 +101,21 @@ def inject_translations(repo_root: Path, translations: list[dict]) -> dict:
                         stats["errors"] += 1
                         continue
 
-                # Safe replacement: only replace one occurrence
-                # Escape the original for literal replacement
-                new_line = line.replace(original, translated, 1)
+                # Safe replacement: replace as complete string literal with quotes
+                # This avoids corrupting concatenation fragments like "\n", " + ", etc.
+                quoted_original = '"' + original + '"'
+                quoted_translated = '"' + translated + '"'
+
+                if quoted_original not in line:
+                    # Fall back to raw replacement for edge cases (e.g. string fragments)
+                    # but only if the line doesn't contain concatenation operators nearby
+                    if ' + ' in line and len(original) < 5:
+                        print(f"  [SKIP] '{original}' looks like concatenation fragment in {filepath}:{line_num}")
+                        stats["skipped"] += 1
+                        continue
+                    new_line = line.replace(original, translated, 1)
+                else:
+                    new_line = line.replace(quoted_original, quoted_translated, 1)
                 if new_line != line:
                     lines[idx] = new_line
                     modified = True
